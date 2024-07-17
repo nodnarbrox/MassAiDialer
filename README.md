@@ -1,4 +1,4 @@
-# 🤖 ☎️ Mass AI Dialer 
+# 🤖 ☎️ MassAiDialer 
 
 ## Summary
 A full stack app for interruptible, low-latency and near-human quality AI phone calls built from stitching LLMs, speech understanding tools, text-to-speech models, and Twilio’s phone API
