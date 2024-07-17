@@ -3,10 +3,11 @@ import time
 import requests
 import streamlit as st
 import dotenv
+import pandas as pd
 
 dotenv.load_dotenv(verbose=True)
 
-st.set_page_config(page_title="AI Dialer", page_icon="📞", layout="wide")
+st.set_page_config(page_title="MassAiDialer", page_icon="📞", layout="wide")
 
 def display_call_interface():
     return st.text_input("Phone Number (format: +1XXXXXXXXXX)", value=os.getenv("YOUR_NUMBER") or "")
@@ -28,11 +29,30 @@ if 'call_active' not in st.session_state:
     st.session_state.all_transcripts = fetch_all_transcripts()
     st.session_state.recording_info = None
     st.session_state.call_selector = "Current Call"
+    st.session_state.phone_numbers = []
 
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; font-size: 2.5em;'>📞 AI Dialer</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; font-size: 2.5em;'>📞 MassAiDialer</h2>", unsafe_allow_html=True)
     st.divider()
     
+    # File uploader for the spreadsheet
+    uploaded_file = st.file_uploader("Upload Call List", type=['xlsx', 'csv'])
+    
+    if uploaded_file is not None:
+        if uploaded_file.name.endswith('.xlsx'):
+            df = pd.read_excel(uploaded_file)
+        else:
+            df = pd.read_csv(uploaded_file)
+
+        st.write("Uploaded Spreadsheet Data:")
+        st.write(df)
+
+        # Extract phone numbers (assuming phone numbers are in a column named 'phone')
+        st.session_state.phone_numbers = df['phone'].tolist()
+
+        st.write("Extracted Phone Numbers:")
+        st.write(st.session_state.phone_numbers)
+
     phone_number = display_call_interface()
     
     st.session_state.system_message = st.text_area("System Message", value=st.session_state.system_message, disabled=st.session_state.call_active)
@@ -41,37 +61,40 @@ with st.sidebar:
     start_call = st.button("Start Call", disabled=st.session_state.call_active)
     end_call = st.button("End Call", disabled=not st.session_state.call_active)
 
-    if start_call and phone_number:
-        with st.spinner(f"Calling {phone_number}..."):
-            try:
-                response = requests.post(f"https://{os.getenv('SERVER')}/start_call", json={
-                    "to_number": phone_number,
-                    "system_message": st.session_state.system_message,
-                    "initial_message": st.session_state.initial_message
-                }, timeout=10)
-                call_data = response.json()
-                if call_sid := call_data.get('call_sid'):
-                    st.session_state.call_sid = call_sid
-                    st.session_state.transcript = []
-                    st.success(f"Call initiated. SID: {call_sid}")
-                    for _ in range(60):
-                        time.sleep(1)
-                        status = requests.get(f"https://{os.getenv('SERVER')}/call_status/{call_sid}").json().get('status')
-                        if status == 'in-progress':
-                            st.session_state.call_active = True
-                            st.session_state.call_selector = "Current Call"
-                            break
-                        if status in ['completed', 'failed', 'busy', 'no-answer']:
-                            st.error(f"Call ended: {status}")
-                            break
-                    else:
-                        st.error("Timeout waiting for call to connect.")
-                else:
-                    st.error(f"Failed to initiate call: {call_data}")
-            except requests.RequestException as e:
-                st.error(f"Error: {str(e)}")
-    elif start_call:
-        st.warning("Please enter a valid phone number.")
+    if start_call:
+        if phone_number or st.session_state.phone_numbers:
+            with st.spinner("Initiating call..."):
+                numbers_to_call = st.session_state.phone_numbers if not phone_number else [phone_number]
+                for number in numbers_to_call:
+                    try:
+                        response = requests.post(f"https://{os.getenv('SERVER')}/start_call", json={
+                            "to_number": number,
+                            "system_message": st.session_state.system_message,
+                            "initial_message": st.session_state.initial_message
+                        }, timeout=10)
+                        call_data = response.json()
+                        if call_sid := call_data.get('call_sid'):
+                            st.session_state.call_sid = call_sid
+                            st.session_state.transcript = []
+                            st.success(f"Call initiated. SID: {call_sid}")
+                            for _ in range(60):
+                                time.sleep(1)
+                                status = requests.get(f"https://{os.getenv('SERVER')}/call_status/{call_sid}").json().get('status')
+                                if status == 'in-progress':
+                                    st.session_state.call_active = True
+                                    st.session_state.call_selector = "Current Call"
+                                    break
+                                if status in ['completed', 'failed', 'busy', 'no-answer']:
+                                    st.error(f"Call ended: {status}")
+                                    break
+                            else:
+                                st.error("Timeout waiting for call to connect.")
+                        else:
+                            st.error(f"Failed to initiate call: {call_data}")
+                    except requests.RequestException as e:
+                        st.error(f"Error: {str(e)}")
+        else:
+            st.warning("Please enter a valid phone number or upload a list of phone numbers.")
 
     if end_call:
         try:
