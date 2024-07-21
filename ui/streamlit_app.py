@@ -7,7 +7,7 @@ import pandas as pd
 
 dotenv.load_dotenv(verbose=True)
 
-st.set_page_config(page_title="MassAiDialer", page_icon="📞", layout="wide")
+st.set_page_config(page_title="WholesaleVA", page_icon="📞", layout="wide")
 
 def display_call_interface():
     return st.text_input("Phone Number (format: +1XXXXXXXXXX)", value=os.getenv("YOUR_NUMBER") or "")
@@ -32,7 +32,7 @@ if 'call_active' not in st.session_state:
     st.session_state.phone_numbers = []
 
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; font-size: 2.5em;'>📞 MassAiDialer</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; font-size: 2.5em;'>📞 WholesaleVA</h2>", unsafe_allow_html=True)
     st.divider()
     
     # File uploader for the spreadsheet
