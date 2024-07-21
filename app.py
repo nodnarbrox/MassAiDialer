@@ -15,8 +15,10 @@ from logger_config import get_logger
 from services.call_context import CallContext
 from services.llm_service import LLMFactory
 from services.stream_service import StreamService
-from services.transcription_service import TranscriptionService
+from services.transcription_service import TranscriptionService  # Updated import
 from services.tts_service import TTSFactory
+
+import requests  # Added for Podio and other integrations
 
 dotenv.load_dotenv()
 app = FastAPI()
@@ -42,25 +44,24 @@ async def get_call_recording(call_sid: str):
     """Get the recording URL for a specific call."""
     recording = get_twilio_client().calls(call_sid).recordings.list()
     if recording:
-        print({"recording_url": f"https://api.twilio.com/{recording[0].uri}"})
         return {"recording_url": f"https://api.twilio.com/{recording[0].uri}"}
     if not recording:
         return {"error": "Recording not found"}
-    
-# Websocket route for Twilio to get media stream
+
+# WebSocket route for Twilio to get media stream
 @app.websocket("/connection")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    llm_service_name = os.getenv("LLM_SERVICE", "openai")
-    tts_service_name = os.getenv("TTS_SERVICE", "deepgram")
+    llm_service_name = os.getenv("LLM_SERVICE", "gpt-neo")
+    tts_service_name = os.getenv("TTS_SERVICE", "coqui")
 
     logger.info(f"Using LLM service: {llm_service_name}")
     logger.info(f"Using TTS service: {tts_service_name}")
 
     llm_service = LLMFactory.get_llm_service(llm_service_name, CallContext())
     stream_service = StreamService(websocket)
-    transcription_service = TranscriptionService()
+    transcription_service = TranscriptionService()  # Updated initialization
     tts_service = TTSFactory.get_tts_service(tts_service_name)
     
     marks = deque()
@@ -93,7 +94,7 @@ async def websocket_endpoint(websocket: WebSocket):
     async def handle_utterance(text, stream_sid):
         try:
             if len(marks) > 0 and text.strip():
-                logger.info("Intruption detected, clearing system.")
+                logger.info("Interruption detected, clearing system.")
                 await websocket.send_json({
                     "streamSid": stream_sid,
                     "event": "clear"
@@ -136,7 +137,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if os.getenv("RECORD_CALLS") == "true":
                     get_twilio_client().calls(call_sid).recordings.create({"recordingChannels": "dual"})
 
-                # Decide if the call the call was initiated from the UI or is an inbound
+                # Decide if the call was initiated from the UI or is an inbound
                 if call_sid not in call_contexts:
                     # Inbound call
                     call_context.system_message = os.environ.get("SYSTEM_MESSAGE")
@@ -196,6 +197,10 @@ async def start_call(request: Dict[str, str]):
         return {"error": "Missing 'to_number' in request"}
 
     try:
+        # Check DNC list before making the call
+        if not check_dnc_list(to_number):
+            return {"error": "The number is on the Do Not Call list."}
+
         client = get_twilio_client()
         logger.info(f"Initiating call to {to_number} via {service_url}")
         call = client.calls.create(
@@ -206,11 +211,10 @@ async def start_call(request: Dict[str, str]):
         call_sid = call.sid
         call_context = CallContext()
         call_contexts[call_sid] = call_context
-        
 
         # Set custom system and initial messages for this call if provided
         call_context.system_message = system_message or os.getenv("SYSTEM_MESSAGE")
-        call_context.initial_message = initial_message or os.getenv("Config.INITIAL_MESSAGE")
+        call_context.initial_message = initial_message or os.getenv("INITIAL_MESSAGE")
         call_context.call_sid = call_sid
 
         return {"call_sid": call_sid}
@@ -233,14 +237,14 @@ async def get_call_status(call_sid: str):
 # API route to end a call
 @app.post("/end_call")
 async def end_call(request: Dict[str, str]):
-    """Get the status of a call."""
+    """End a call."""
     try:
         call_sid = request.get("call_sid")
         client = get_twilio_client()
         client.calls(call_sid).update(status='completed')
         return {"status": "success"}
     except Exception as e:
-        logger.error(f"Error ending call {str(e)}")
+        logger.error(f"Error ending call: {str(e)}")
         return {"error": f"Failed to end requested call: {str(e)}"}
 
 # API call to get the transcript for a specific call
@@ -271,6 +275,41 @@ async def get_all_transcripts():
         logger.error(f"Error fetching all transcripts: {str(e)}")
         return {"error": f"Failed to fetch all transcripts: {str(e)}"}
 
+# Additional functions for integration
+
+def check_dnc_list(phone_number):
+    """Check if the phone number is on the DNC list."""
+    dnc_check_url = os.getenv("DNC_API_URL")
+    response = requests.get(f"{dnc_check_url}?number={phone_number}")
+    return response.json().get("allowed")
+
+def skip_trace(phone_number):
+    """Perform skip tracing to get additional contact information using SkipEngine."""
+    skip_trace_url = os.getenv("SKIP_TRACE_SERVICE")
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.getenv('SKIP_TRACE_API_KEY')}"
+    }
+    data = {
+        "number": phone_number
+    }
+    response = requests.post(skip_trace_url, headers=headers, json=data)
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+def update_podio(call_sid, summary, conversation_stage):
+    """Update Podio with call summary and conversation stage."""
+    podio_api_url = "https://api.podio.com/item/app/your_app_id/item_id"
+    access_token = os.getenv("PODIO_ACCESS_TOKEN")
+    data = {
+        "fields": {
+            "summary": summary,
+            "conversation_stage": conversation_stage
+        }
+    }
+    response = requests.put(podio_api_url, json=data, headers={"Authorization": f"OAuth2 {access_token}"})
+    return response.status_code == 200
 
 if __name__ == "__main__":
     import uvicorn
@@ -278,4 +317,3 @@ if __name__ == "__main__":
     logger.info(f"Backend server address set to: {os.getenv('SERVER')}")
     port = int(os.getenv("PORT", 3000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
