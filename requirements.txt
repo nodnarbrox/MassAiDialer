@@ -12,7 +12,12 @@ websockets
 # API Integrations
 twilio
 openai
-deepgram-sdk
+
+#TTS
+coqui
+
+#LOCAL LLM
+transformers
 
 # Event Handling
 event-emitter
@@ -30,3 +35,9 @@ pytest-asyncio
 streamlit
 
 anthropic
+
+#others
+uvicorn
+python-dotenv
+torch
+
