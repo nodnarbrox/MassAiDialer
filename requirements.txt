@@ -18,6 +18,7 @@ coqui
 
 #LOCAL LLM
 transformers
+whisper
 
 # Event Handling
 event-emitter
