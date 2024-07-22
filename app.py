@@ -13,14 +13,15 @@ from twilio.twiml.voice_response import Connect, VoiceResponse
 
 from logger_config import get_logger
 from services.call_context import CallContext
-from services.llm_service import LLMFactory
 from services.stream_service import StreamService
-from services.transcription_service import TranscriptionService  # Updated import
-from services.tts_service import TTSFactory
 
-import requests  # Added for Podio and other integrations
+# Import local service classes
+from services.local_llm_service import LocalLLMService
+from services.local_transcription_service import LocalTranscriptionService
+from services.local_tts_service import LocalTTSService
 
 dotenv.load_dotenv()
+
 app = FastAPI()
 logger = get_logger("App")
 
@@ -38,7 +39,6 @@ async def incoming_call() -> HTMLResponse:
     response.append(connect)
     return HTMLResponse(content=str(response), status_code=200)
 
-
 @app.get("/call_recording/{call_sid}")
 async def get_call_recording(call_sid: str):
     """Get the recording URL for a specific call."""
@@ -48,22 +48,21 @@ async def get_call_recording(call_sid: str):
     if not recording:
         return {"error": "Recording not found"}
 
-# WebSocket route for Twilio to get media stream
 @app.websocket("/connection")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
-    llm_service_name = os.getenv("LLM_SERVICE", "gpt-neo")
-    tts_service_name = os.getenv("TTS_SERVICE", "coqui")
+    llm_service_name = os.getenv("LLM_SERVICE", "local_gpt_neo")
+    tts_service_name = os.getenv("TTS_SERVICE", "local_coqui")
 
     logger.info(f"Using LLM service: {llm_service_name}")
     logger.info(f"Using TTS service: {tts_service_name}")
 
-    llm_service = LLMFactory.get_llm_service(llm_service_name, CallContext())
+    llm_service = LocalLLMService()
     stream_service = StreamService(websocket)
-    transcription_service = TranscriptionService()  # Updated initialization
-    tts_service = TTSFactory.get_tts_service(tts_service_name)
-    
+    transcription_service = LocalTranscriptionService()
+    tts_service = LocalTTSService()
+
     marks = deque()
     interaction_count = 0
 
@@ -99,7 +98,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "streamSid": stream_sid,
                     "event": "clear"
                 })
-                
+
                 # reset states
                 stream_service.reset()
                 llm_service.reset()
@@ -147,7 +146,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 else:
                     # Call from UI, reuse the existing context
                     call_context = call_contexts[call_sid]
-                
+
                 llm_service.set_call_context(call_context)
 
                 stream_service.set_stream_sid(stream_sid)
@@ -182,7 +181,6 @@ async def websocket_endpoint(websocket: WebSocket):
 def get_twilio_client():
     return Client(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
 
-# API route to initiate a call via UI
 @app.post("/start_call")
 async def start_call(request: Dict[str, str]):
     """Initiate a call using Twilio with optional system and initial messages."""
@@ -222,7 +220,6 @@ async def start_call(request: Dict[str, str]):
         logger.error(f"Error initiating call: {str(e)}")
         return {"error": f"Failed to initiate call: {str(e)}"}
 
-# API route to get the status of a call
 @app.get("/call_status/{call_sid}")
 async def get_call_status(call_sid: str):
     """Get the status of a call."""
@@ -234,7 +231,6 @@ async def get_call_status(call_sid: str):
         logger.error(f"Error fetching call status: {str(e)}")
         return {"error": f"Failed to fetch call status: {str(e)}"}
 
-# API route to end a call
 @app.post("/end_call")
 async def end_call(request: Dict[str, str]):
     """End a call."""
@@ -247,7 +243,6 @@ async def end_call(request: Dict[str, str]):
         logger.error(f"Error ending call: {str(e)}")
         return {"error": f"Failed to end requested call: {str(e)}"}
 
-# API call to get the transcript for a specific call
 @app.get("/transcript/{call_sid}")
 async def get_transcript(call_sid: str):
     """Get the entire transcript for a specific call."""
@@ -259,7 +254,6 @@ async def get_transcript(call_sid: str):
 
     return {"transcript": call_context.user_context}
 
-# API route to get all call transcripts
 @app.get("/all_transcripts")
 async def get_all_transcripts():
     """Get a list of all current call transcripts."""
@@ -274,8 +268,6 @@ async def get_all_transcripts():
     except Exception as e:
         logger.error(f"Error fetching all transcripts: {str(e)}")
         return {"error": f"Failed to fetch all transcripts: {str(e)}"}
-
-# Additional functions for integration
 
 def check_dnc_list(phone_number):
     """Check if the phone number is on the DNC list."""
