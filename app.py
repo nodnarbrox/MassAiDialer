@@ -285,14 +285,14 @@ def skip_trace(phone_number):
     data = {
         "number": phone_number
     }
-    response = requests.post(skip_trace_url, headers=headers, json=data)
+    response = requests.post(skip_trace_url, headers=headers, json(data))
     if response.status_code == 200:
         return response.json()
     return None
 
 def update_podio(call_sid, summary, conversation_stage):
     """Update Podio with call summary and conversation stage."""
-    podio_api_url = "https://api.podio.com/item/app/your_app_id/item_id"
+    podio_api_url = f"https://api.podio.com/item/app/{os.getenv('PODIO_APP_ID')}/item/{call_sid}"
     access_token = os.getenv("PODIO_ACCESS_TOKEN")
     data = {
         "fields": {
