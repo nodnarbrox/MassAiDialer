@@ -25,57 +25,29 @@ Installation
 
 pip install -r requirements.txt
 
-2. Set up ngrok
-
-Twilio requires an externally accessible server to be able to route calls. To do this while running a local instance, you need to expose the server to the outside world. One way to do this is through using ngrok
-
-Run ngrok to get an external URL that forwards traffic to your local web server:
-
-yaml
-
-ngrok http 3000
-
-Copy the URL that ngrok gives you (e.g. 1bf0-157-131-155-236.ngrok-free.app) without the https:// at the beginning and set that as your SERVER variable in the following section.
 3. Configure .env file
 
 Make a copy of the .env.example file and rename it to .env. Then set the required credentials and configurations.
-
-makefile
-
 # Server Configuration
-SERVER=your_server_here
-# port number if you are running the server locally
+SERVER=your_local_server
 PORT=3000
 
-# Service API Keys
-
-# Twilio
+# Twilio Credentials
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 
-# AI Services
-## LLM
-HUGGING_FACE_API_KEY=your_hugging_face_api_key
-
-## Speech Understanding/TTS
-WHISPER_API_KEY=your_whisper_api_key
-
-## TTS
-COQUI_API_KEY=your_coqui_api_key
-
-# Which service to use for TTS
-TTS_SERVICE=coqui
-
-# Which service to use for LLM
-LLM_SERVICE=gpt-neo
+# AI Services Configuration
+TTS_SERVICE=local_coqui
+LLM_SERVICE=local_gpt_neo
 
 # CRM Integration
+PODIO_APP_ID=your_podio_app_id
 PODIO_ACCESS_TOKEN=your_podio_access_token
 
 # Compliance
 DNC_API_URL=https://api.ftc.gov/v0/dnc-complaints?api_key=your_dnc_api_key
 
-# Skip Trace
+# Skip Trace Service (SkipEngine)
 SKIP_TRACE_SERVICE=https://api.skipengine.com/append
 SKIP_TRACE_API_KEY=your_skipengine_api_key
 
@@ -94,7 +66,6 @@ INITIAL_MESSAGE="Hello, my name is Sarah, and I'm calling from El Camino Hospita
 
 # Should calls be recorded? (this has legal implications, so be careful)
 RECORD_CALLS=false
-
 4. Configure the Twilio end point
 
 Assuming that you have created a Twilio phone number and installed Twilio's CLI, run the following to configure Twilio to use your app's endpoint:
